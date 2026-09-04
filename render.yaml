@@ -5,17 +5,22 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm run deploy && npm start
-    autoDeployTrigger: commit
+
     envVars:
       - key: DISCORD_BOT_TOKEN
         sync: false
+
       - key: DISCORD_CLIENT_ID
         sync: false
+
       - key: DISCORD_GUILD_ID
         sync: false
+
       - key: ANNOUNCER_ROLE_IDS
         sync: false
+
       - key: BRAND_NAME
         value: Hashwear
+
       - key: DEFAULT_EMBED_COLOR
         value: "#111111"
