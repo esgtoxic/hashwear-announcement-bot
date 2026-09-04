@@ -1,0 +1,21 @@
+services:
+  - type: worker
+    name: hashwear-announcement-bot
+    runtime: node
+    plan: 0.5c-512mb
+    buildCommand: npm install
+    startCommand: npm run deploy && npm start
+    autoDeployTrigger: commit
+    envVars:
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_GUILD_ID
+        sync: false
+      - key: ANNOUNCER_ROLE_IDS
+        sync: false
+      - key: BRAND_NAME
+        value: Hashwear
+      - key: DEFAULT_EMBED_COLOR
+        value: "#111111"
