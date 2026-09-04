@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm install
-    startCommand: npm run deploy && npm start
+    startCommand: npm start
 
     envVars:
       - key: DISCORD_BOT_TOKEN
