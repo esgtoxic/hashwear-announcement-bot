@@ -1,8 +1,8 @@
 services:
-  - type: worker
+  - type: web
     name: hashwear-announcement-bot
     runtime: node
-    plan: 0.5c-512mb
+    plan: free
     buildCommand: npm install
     startCommand: npm run deploy && npm start
     autoDeployTrigger: commit
