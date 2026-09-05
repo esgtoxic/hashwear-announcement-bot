@@ -331,15 +331,14 @@ async function startDiscord() {
 
     if (!response.ok) {
       const body = await response.text();
-      console.error(`DISCORD TOKEN CHECK FAILED: HTTP ${response.status}`);
-      console.error(body);
-      return;
+      console.warn(`Discord REST preflight returned HTTP ${response.status}. Continuing to Gateway login anyway.`);
+      console.warn(body.slice(0, 500));
+    } else {
+      const botUser = await response.json();
+      console.log(`Discord token valid for bot: ${botUser.username} (${botUser.id})`);
     }
-
-    const botUser = await response.json();
-    console.log(`Discord token valid for bot: ${botUser.username} (${botUser.id})`);
   } catch (error) {
-    console.error('DISCORD API CONNECTION CHECK FAILED:', error);
+    console.warn('Discord REST preflight failed. Continuing to Gateway login anyway:', error);
   }
 
   console.log('Attempting to connect to Discord Gateway...');
