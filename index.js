@@ -302,13 +302,55 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 });
 
-console.log('Attempting to connect to Discord...');
+client.on('error', error => {
+  console.error('DISCORD CLIENT ERROR:', error);
+});
 
-client.login(DISCORD_BOT_TOKEN)
-  .then(() => {
+client.on('shardError', error => {
+  console.error('DISCORD SHARD ERROR:', error);
+});
+
+process.on('unhandledRejection', error => {
+  console.error('UNHANDLED REJECTION:', error);
+});
+
+async function startDiscord() {
+  console.log('Discord configuration check:');
+  console.log('- Token present:', Boolean(DISCORD_BOT_TOKEN));
+  console.log('- Token length:', DISCORD_BOT_TOKEN?.length || 0);
+  console.log('- Client ID present:', Boolean(process.env.DISCORD_CLIENT_ID));
+  console.log('- Guild ID present:', Boolean(process.env.DISCORD_GUILD_ID));
+  console.log('Checking Discord bot token with Discord API...');
+
+  try {
+    const response = await fetch('https://discord.com/api/v10/users/@me', {
+      headers: {
+        Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
+      },
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      console.error(`DISCORD TOKEN CHECK FAILED: HTTP ${response.status}`);
+      console.error(body);
+      return;
+    }
+
+    const botUser = await response.json();
+    console.log(`Discord token valid for bot: ${botUser.username} (${botUser.id})`);
+  } catch (error) {
+    console.error('DISCORD API CONNECTION CHECK FAILED:', error);
+  }
+
+  console.log('Attempting to connect to Discord Gateway...');
+
+  try {
+    await client.login(DISCORD_BOT_TOKEN);
     console.log('Discord login request accepted.');
-  })
-  .catch(error => {
+  } catch (error) {
     console.error('DISCORD LOGIN FAILED:');
     console.error(error);
-  });
+  }
+}
+
+startDiscord();
