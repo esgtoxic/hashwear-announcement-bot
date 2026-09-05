@@ -1,18 +1,17 @@
 {
   "name": "hashwear-announcement-bot",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Hashwear Discord announcement bot",
-  "main": "index.js",
+  "description": "Hashwear Discord announcement app on Cloudflare Workers",
+  "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "deploy": "node deploy-commands.js"
-  },
-  "engines": {
-    "node": ">=24.17.0 <25.0.0"
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "discord.js": "^14.27.0",
-    "dotenv": "^16.6.1"
+    "discord-interactions": "^4.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
   }
 }
