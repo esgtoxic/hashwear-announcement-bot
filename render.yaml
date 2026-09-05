@@ -5,8 +5,12 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
+    autoDeployTrigger: commit
 
     envVars:
+      - key: NODE_VERSION
+        value: "24.17.0"
+
       - key: DISCORD_BOT_TOKEN
         sync: false
 
