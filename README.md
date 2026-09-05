@@ -1,131 +1,100 @@
-# Hashwear Announcement Bot
+# Hashwear Announcement Bot — Cloudflare Workers
 
-A Discord slash-command bot for posting branded announcements to any text or announcement channel the bot can access.
+This version uses Discord HTTP Interactions instead of a permanent Discord Gateway connection.
 
-## Features
+## What stays the same
 
-- `/announce`
-- Select the destination channel
-- Title + long announcement text
-- Discord markdown and clickable links inside the message
-- Up to 4 uploaded images
-- Optional external image URL
-- Optional thumbnail
-- Up to 2 clickable link buttons
-- Custom embed color
-- Optional footer
-- Optional role ping
-- Optional `@everyone` ping
-- Permission checks so normal members cannot broadcast
-- Private success/error response to the staff member who ran the command
+- The **Hashwear Announcements** app/bot remains installed in the Discord server.
+- Use `/announce` directly inside Discord.
+- Choose any text or announcement channel.
+- Title + formatted message.
+- Up to 4 uploaded images.
+- Optional external image URL and thumbnail.
+- Up to 2 clickable link buttons.
+- Optional role ping and @everyone.
+- Custom embed color and footer.
+- Staff permission checks using Administrator, Manage Messages, or `ANNOUNCER_ROLE_IDS`.
 
-## 1. Requirements
+The app does **not** need to maintain a 24/7 Discord Gateway connection.
 
-- Node.js 18 or newer
-- A Discord application/bot
-- Bot token
-- Application/Client ID
-- Your server/Guild ID for fast command registration while testing
+## Cloudflare secrets / variables
 
-## 2. Install
+Set these in Cloudflare Workers > Settings > Variables and Secrets:
 
-```bash
-npm install
-```
+### Secrets
 
-Copy `.env.example` to `.env` and fill in:
+- `DISCORD_BOT_TOKEN` — Discord Developer Portal > Bot > Token
+- `DISCORD_PUBLIC_KEY` — Discord Developer Portal > General Information > Public Key
+- `REGISTER_SECRET` — choose your own temporary random password for the registration URL
 
-```env
-DISCORD_BOT_TOKEN=your_bot_token
-DISCORD_CLIENT_ID=your_application_id
-DISCORD_GUILD_ID=your_server_id
-ANNOUNCER_ROLE_IDS=role_id_1,role_id_2
-BRAND_NAME=Hashwear
-DEFAULT_EMBED_COLOR=#111111
-```
+### Variables / secrets
 
-Do **not** commit `.env` to GitHub.
+- `DISCORD_CLIENT_ID` — Discord Application ID
+- `DISCORD_GUILD_ID` — Hashwear server ID
+- `ANNOUNCER_ROLE_IDS` — comma-separated IDs of roles allowed to use `/announce`
 
-## 3. Register the slash command
+The Wrangler file already provides:
 
-```bash
-npm run deploy
-```
+- `BRAND_NAME=Hashwear`
+- `DEFAULT_EMBED_COLOR=#111111`
 
-When `DISCORD_GUILD_ID` is present, `/announce` is registered only in that server and normally becomes available quickly.
+## Deployment
 
-If you later remove `DISCORD_GUILD_ID` and run the deploy command again, the command is registered globally.
+Deploy this repository as a Cloudflare Worker using the GitHub integration or Wrangler.
 
-## 4. Start the bot
+After deployment Cloudflare gives you a URL similar to:
 
-```bash
-npm start
-```
+`https://hashwear-announcement-bot.<your-subdomain>.workers.dev`
 
-## 5. Bot permissions
+## Discord Interactions Endpoint URL
 
-When inviting the bot, give it:
+In Discord Developer Portal:
 
-- View Channels
-- Send Messages
-- Embed Links
-- Attach Files
-- Use Application Commands
+1. Open **Hashwear Announcements**.
+2. Go to **General Information**.
+3. Find **Interactions Endpoint URL**.
+4. Enter:
 
-Only give **Mention @everyone, @here, and All Roles** if you want the `ping_everyone` option to work.
+`https://YOUR-WORKER.workers.dev/interactions`
 
-The bot does not need Administrator.
+5. Save.
 
-## 6. Who can announce?
+Discord will PING the Worker. The Worker verifies the Ed25519 signature and returns PONG automatically.
 
-A user can use `/announce` if they have:
+## Register /announce
 
-- Administrator, or
-- Manage Messages, or
-- A role whose ID is included in `ANNOUNCER_ROLE_IDS`
+After the Worker secrets have been added, visit:
 
-## Example
+`https://YOUR-WORKER.workers.dev/register?key=YOUR_REGISTER_SECRET`
 
-Run `/announce` and choose:
+You should receive:
 
-- `channel`: `#announcements`
-- `title`: `NEW DROP IS LIVE`
-- `message`: `The latest Hashwear drop is live now. [Shop the collection](https://www.hashwear.in/)`
-- `image1`: upload the campaign creative
-- `link1_text`: `SHOP NOW`
-- `link1_url`: `https://www.hashwear.in/`
-- `ping_role`: your Updates role
-- `color`: `#111111`
+`"/announce registered successfully in the configured Discord server."`
 
-The command response is private; only the final announcement appears in the selected channel.
+After registration, you can delete the `REGISTER_SECRET` variable from Cloudflare to disable the registration endpoint.
 
-## Deploying on a host
+## Test
 
-Use:
+In the Hashwear Discord server type:
 
-- Build command: `npm install`
-- Start command: `npm start`
+`/announce`
 
-Add the same environment variables from `.env` to your hosting platform's Variables/Environment section.
+Required fields:
 
-Run `npm run deploy` once from your computer (or your host's shell) whenever you change the slash-command options.
+- channel
+- message
 
-## Discord Developer Portal setup
+All other fields are optional.
 
-1. Create/open the Hashwear bot application.
-2. Go to **Bot** and copy/reset the bot token.
-3. Go to **OAuth2 > URL Generator**.
-4. Select scopes:
-   - `bot`
-   - `applications.commands`
-5. Select the bot permissions listed above.
-6. Open the generated invite URL and add the bot to your server.
+Example:
 
-### IDs
+- channel: #announcements
+- title: NEW DROP IS LIVE
+- message: The latest Hashwear collection is now live.
+- image1: upload banner
+- link1_text: SHOP NOW
+- link1_url: https://www.hashwear.in/
+- ping_role: @Drops
+- color: #111111
 
-Enable Discord Developer Mode under **User Settings > Advanced > Developer Mode**.
-
-Then:
-- Server/Guild ID: right-click the server -> **Copy Server ID**
-- Role ID: Server Settings -> Roles -> right-click role -> **Copy Role ID**
-- Client ID: Discord Developer Portal -> application -> **General Information** -> **Application ID**
+The command response is private to the staff member running it. The actual announcement is posted by the Hashwear bot in the selected channel.
