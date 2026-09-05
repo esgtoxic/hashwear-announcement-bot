@@ -302,4 +302,13 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 });
 
-client.login(DISCORD_BOT_TOKEN);
+console.log('Attempting to connect to Discord...');
+
+client.login(DISCORD_BOT_TOKEN)
+  .then(() => {
+    console.log('Discord login request accepted.');
+  })
+  .catch(error => {
+    console.error('DISCORD LOGIN FAILED:');
+    console.error(error);
+  });
