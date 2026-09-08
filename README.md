@@ -1,100 +1,65 @@
-# Hashwear Announcement Bot — Cloudflare Workers
+# Hashwear Announcement Bot
 
-This version uses Discord HTTP Interactions instead of a permanent Discord Gateway connection.
+Discord announcement bot built with Node.js + discord.js and deployed as a free Render Web Service using a Render Blueprint (`render.yaml`).
 
-## What stays the same
+## Features
 
-- The **Hashwear Announcements** app/bot remains installed in the Discord server.
-- Use `/announce` directly inside Discord.
-- Choose any text or announcement channel.
-- Title + formatted message.
-- Up to 4 uploaded images.
-- Optional external image URL and thumbnail.
-- Up to 2 clickable link buttons.
-- Optional role ping and @everyone.
-- Custom embed color and footer.
-- Staff permission checks using Administrator, Manage Messages, or `ANNOUNCER_ROLE_IDS`.
+- `/announce` slash command
+- Post in any selectable text channel, announcement channel, public thread, private thread, or announcement thread the bot can access
+- Title + formatted message
+- Up to 4 uploaded images
+- Optional external image URL and thumbnail
+- Up to 2 clickable link buttons
+- Optional role ping and `@everyone`
+- Custom embed color and footer
+- Staff access via Administrator, Manage Messages, or configured announcer role IDs
+- Private success/error response to the staff member
+- Automatic slash-command registration on startup
+- `/health` endpoint for Render
 
-The app does **not** need to maintain a 24/7 Discord Gateway connection.
+## Discord bot permissions
 
-## Cloudflare secrets / variables
+Give the bot these permissions in channels where it should announce:
 
-Set these in Cloudflare Workers > Settings > Variables and Secrets:
+- View Channel
+- Send Messages
+- Send Messages in Threads (for threads)
+- Embed Links
+- Attach Files
+- Mention @everyone, @here, and All Roles only if you want role/@everyone pings
 
-### Secrets
+The invite should include both `bot` and `applications.commands` scopes.
 
-- `DISCORD_BOT_TOKEN` — Discord Developer Portal > Bot > Token
-- `DISCORD_PUBLIC_KEY` — Discord Developer Portal > General Information > Public Key
-- `REGISTER_SECRET` — choose your own temporary random password for the registration URL
+## Render Blueprint deployment
 
-### Variables / secrets
+1. Open Render Dashboard.
+2. Choose **New > Blueprint**.
+3. Connect `esgtoxic/hashwear-announcement-bot`.
+4. Render reads `render.yaml` from the repository root.
+5. Enter the secret environment values when prompted:
+   - `DISCORD_BOT_TOKEN`
+   - `DISCORD_CLIENT_ID`
+   - `DISCORD_GUILD_ID`
+   - `ANNOUNCER_ROLE_IDS` (optional; can be blank)
+6. Apply the Blueprint.
 
-- `DISCORD_CLIENT_ID` — Discord Application ID
-- `DISCORD_GUILD_ID` — Hashwear server ID
-- `ANNOUNCER_ROLE_IDS` — comma-separated IDs of roles allowed to use `/announce`
+The service uses the Free plan and starts with `npm start`.
 
-The Wrangler file already provides:
+## Command example
 
-- `BRAND_NAME=Hashwear`
-- `DEFAULT_EMBED_COLOR=#111111`
+Use `/announce` and choose:
 
-## Deployment
+- `channel`: `#announcements`
+- `title`: `NEW DROP IS LIVE`
+- `message`: `The latest Hashwear collection is now live.`
+- `image1`: upload a banner
+- `link1_text`: `SHOP NOW`
+- `link1_url`: `https://www.hashwear.in/`
+- `ping_role`: a server role
+- `color`: `#111111`
 
-Deploy this repository as a Cloudflare Worker using the GitHub integration or Wrangler.
+Only `channel` and `message` are required.
 
-After deployment Cloudflare gives you a URL similar to:
+## Free Render note
 
-`https://hashwear-announcement-bot.<your-subdomain>.workers.dev`
-
-## Discord Interactions Endpoint URL
-
-In Discord Developer Portal:
-
-1. Open **Hashwear Announcements**.
-2. Go to **General Information**.
-3. Find **Interactions Endpoint URL**.
-4. Enter:
-
-`https://YOUR-WORKER.workers.dev/interactions`
-
-5. Save.
-
-Discord will PING the Worker. The Worker verifies the Ed25519 signature and returns PONG automatically.
-
-## Register /announce
-
-After the Worker secrets have been added, visit:
-
-`https://YOUR-WORKER.workers.dev/register?key=YOUR_REGISTER_SECRET`
-
-You should receive:
-
-`"/announce registered successfully in the configured Discord server."`
-
-After registration, you can delete the `REGISTER_SECRET` variable from Cloudflare to disable the registration endpoint.
-
-## Test
-
-In the Hashwear Discord server type:
-
-`/announce`
-
-Required fields:
-
-- channel
-- message
-
-All other fields are optional.
-
-Example:
-
-- channel: #announcements
-- title: NEW DROP IS LIVE
-- message: The latest Hashwear collection is now live.
-- image1: upload banner
-- link1_text: SHOP NOW
-- link1_url: https://www.hashwear.in/
-- ping_role: @Drops
-- color: #111111
-
-The command response is private to the staff member running it. The actual announcement is posted by the Hashwear bot in the selected channel.
+Render's Free web services can spin down after a period with no qualifying inbound traffic, so the free tier is best treated as hobby/testing hosting rather than guaranteed 24/7 production hosting.
