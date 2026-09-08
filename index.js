@@ -414,14 +414,24 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Health server listening on 0.0.0.0:${PORT}`);
 });
 
-async function start() {
-  try {
-    await registerCommands();
-    await client.login(DISCORD_BOT_TOKEN);
-  } catch (error) {
-    console.error('Startup failed:', error);
-    process.exit(1);
-  }
+function start() {
+  client.login(DISCORD_BOT_TOKEN)
+    .then(() => console.log('Discord login request accepted.'))
+    .catch(error => console.error('Discord login failed:', error));
+
+  registerCommands()
+    .catch(error => console.warn(
+      'Slash command registration failed; Discord login will continue:',
+      error?.message || error,
+    ));
+
+  setTimeout(() => {
+    if (!client.isReady()) {
+      console.warn(
+        'Discord Gateway is still not ready after 30 seconds. Render may be rate-limited or blocked by Discord.',
+      );
+    }
+  }, 30000).unref();
 }
 
 async function shutdown(signal) {
