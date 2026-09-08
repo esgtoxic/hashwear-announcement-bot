@@ -150,12 +150,34 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Health server listening on 0.0.0.0:${PORT}`);
 });
 
-client.login(DISCORD_BOT_TOKEN)
-  .then(() => console.log('Discord login request accepted.'))
-  .catch(error => {
+let reconnecting = false;
+
+async function connectDiscord() {
+  if (reconnecting || client.isReady()) return;
+  reconnecting = true;
+
+  try {
+    await client.login(DISCORD_BOT_TOKEN);
+    console.log('Discord login request accepted.');
+  } catch (error) {
     console.error('Discord login failed:', error);
-    process.exit(1);
-  });
+  } finally {
+    reconnecting = false;
+  }
+}
+
+connectDiscord();
+
+setInterval(async () => {
+  if (client.isReady()) return;
+
+  console.warn('Discord is not ready; resetting Gateway connection and retrying.');
+  try {
+    client.destroy();
+  } catch {}
+
+  await connectDiscord();
+}, 30000).unref();
 
 async function shutdown(signal) {
   console.log(`${signal} received; shutting down.`);
