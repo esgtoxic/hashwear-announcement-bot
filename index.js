@@ -2,33 +2,24 @@ require('dotenv').config();
 
 const http = require('http');
 const {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ChannelType,
   Client,
-  EmbedBuilder,
   Events,
   GatewayIntentBits,
   PermissionFlagsBits,
-  REST,
-  Routes,
-  SlashCommandBuilder,
 } = require('discord.js');
 
 const {
   DISCORD_BOT_TOKEN,
-  DISCORD_CLIENT_ID,
   DISCORD_GUILD_ID = '',
   ANNOUNCER_ROLE_IDS = '',
   BRAND_NAME = 'Hashwear',
-  DEFAULT_EMBED_COLOR = '#111111',
 } = process.env;
 
 const PORT = Number(process.env.PORT || 10000);
+const PREFIX = '.announce';
 
-if (!DISCORD_BOT_TOKEN || !DISCORD_CLIENT_ID) {
-  console.error('Missing required environment variables: DISCORD_BOT_TOKEN and/or DISCORD_CLIENT_ID.');
+if (!DISCORD_BOT_TOKEN) {
+  console.error('Missing required environment variable: DISCORD_BOT_TOKEN.');
   process.exit(1);
 }
 
@@ -38,393 +29,98 @@ const announcerRoleIds = ANNOUNCER_ROLE_IDS
   .filter(Boolean);
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
 });
 
-const announceCommand = new SlashCommandBuilder()
-  .setName('announce')
-  .setDescription('Post an announcement in a selected channel')
-  .addChannelOption(option =>
-    option
-      .setName('channel')
-      .setDescription('Text channel, announcement channel, or thread to post in')
-      .addChannelTypes(
-        ChannelType.GuildText,
-        ChannelType.GuildAnnouncement,
-        ChannelType.PublicThread,
-        ChannelType.PrivateThread,
-        ChannelType.AnnouncementThread,
-      )
-      .setRequired(true)
-  )
-  .addStringOption(option =>
-    option
-      .setName('message')
-      .setDescription('Announcement text; Discord markdown is supported')
-      .setMaxLength(4000)
-      .setRequired(true)
-  )
-  .addStringOption(option =>
-    option
-      .setName('title')
-      .setDescription('Optional title')
-      .setMaxLength(256)
-  )
-  .addAttachmentOption(option => option.setName('image1').setDescription('First image'))
-  .addAttachmentOption(option => option.setName('image2').setDescription('Second image'))
-  .addAttachmentOption(option => option.setName('image3').setDescription('Third image'))
-  .addAttachmentOption(option => option.setName('image4').setDescription('Fourth image'))
-  .addStringOption(option =>
-    option
-      .setName('image_url')
-      .setDescription('Optional public image URL')
-      .setMaxLength(1000)
-  )
-  .addStringOption(option =>
-    option
-      .setName('thumbnail_url')
-      .setDescription('Optional small thumbnail URL')
-      .setMaxLength(1000)
-  )
-  .addStringOption(option =>
-    option
-      .setName('link1_text')
-      .setDescription('First button label')
-      .setMaxLength(80)
-  )
-  .addStringOption(option =>
-    option
-      .setName('link1_url')
-      .setDescription('First button URL')
-      .setMaxLength(1000)
-  )
-  .addStringOption(option =>
-    option
-      .setName('link2_text')
-      .setDescription('Second button label')
-      .setMaxLength(80)
-  )
-  .addStringOption(option =>
-    option
-      .setName('link2_url')
-      .setDescription('Second button URL')
-      .setMaxLength(1000)
-  )
-  .addRoleOption(option =>
-    option
-      .setName('ping_role')
-      .setDescription('Optional role to ping')
-  )
-  .addBooleanOption(option =>
-    option
-      .setName('ping_everyone')
-      .setDescription('Ping @everyone')
-  )
-  .addStringOption(option =>
-    option
-      .setName('color')
-      .setDescription('Embed hex color, e.g. #111111')
-      .setMaxLength(7)
-  )
-  .addStringOption(option =>
-    option
-      .setName('footer')
-      .setDescription('Optional footer')
-      .setMaxLength(2048)
-  );
-
-function hasAnnouncementPermission(interaction) {
+function hasAnnouncementPermission(message) {
   if (
-    interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
-    interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages)
+    message.member?.permissions.has(PermissionFlagsBits.Administrator) ||
+    message.member?.permissions.has(PermissionFlagsBits.ManageMessages)
   ) {
     return true;
   }
 
   if (!announcerRoleIds.length) return false;
 
-  const roles = interaction.member?.roles;
-  const memberRoleIds = roles?.cache
-    ? [...roles.cache.keys()]
-    : Array.isArray(roles)
-      ? roles
-      : [];
-
-  return announcerRoleIds.some(roleId => memberRoleIds.includes(roleId));
+  return announcerRoleIds.some(roleId => message.member?.roles.cache.has(roleId));
 }
 
-function isHttpUrl(value) {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-function parseColor(value) {
-  const candidate = String(value || DEFAULT_EMBED_COLOR || '#111111').trim();
-  const normalized = candidate.startsWith('#') ? candidate.slice(1) : candidate;
-  return /^[0-9a-fA-F]{6}$/.test(normalized) ? Number.parseInt(normalized, 16) : null;
-}
-
-function safeFilename(name, index) {
-  const cleaned = String(name || `image-${index}.png`)
-    .replace(/[^a-zA-Z0-9._-]/g, '-')
-    .slice(-100);
-  return cleaned || `image-${index}.png`;
-}
-
-async function registerCommands() {
-  const rest = new REST({ version: '10' }).setToken(DISCORD_BOT_TOKEN);
-  const body = [announceCommand.toJSON()];
-
-  if (DISCORD_GUILD_ID.trim()) {
-    await rest.put(
-      Routes.applicationGuildCommands(DISCORD_CLIENT_ID, DISCORD_GUILD_ID.trim()),
-      { body },
-    );
-    console.log(`Registered /announce in guild ${DISCORD_GUILD_ID.trim()}.`);
-    return;
-  }
-
-  await rest.put(Routes.applicationCommands(DISCORD_CLIENT_ID), { body });
-  console.log('Registered /announce globally. Global command updates can take longer to appear.');
-}
-
-async function replyEphemeral(interaction, content) {
-  if (interaction.deferred || interaction.replied) {
-    await interaction.editReply({ content });
-  } else {
-    await interaction.reply({ content, ephemeral: true });
-  }
-}
-
-let commandRegistrationStatus = 'pending';
-let commandRegistrationError = null;
-
-async function registerGuildCommandAfterReady() {
-  if (!DISCORD_GUILD_ID.trim()) {
-    console.warn('DISCORD_GUILD_ID is blank; skipping instant guild command registration.');
-    commandRegistrationStatus = 'skipped_no_guild_id';
-    return;
-  }
+async function removeOldSlashCommands() {
+  if (!DISCORD_GUILD_ID.trim()) return;
 
   const guild = client.guilds.cache.get(DISCORD_GUILD_ID.trim());
   if (!guild) {
-    commandRegistrationStatus = 'guild_not_found';
-    commandRegistrationError = 'Configured guild is not in the bot cache.';
     console.warn('Configured DISCORD_GUILD_ID is not available in the bot cache.');
     return;
   }
 
   try {
-    await guild.commands.set([announceCommand.toJSON()]);
-    commandRegistrationStatus = 'registered';
-    commandRegistrationError = null;
-    console.log(`Registered /announce in guild ${guild.id} after ClientReady.`);
+    await guild.commands.set([]);
+    console.log(`Removed old slash commands from guild ${guild.id}.`);
   } catch (error) {
-    commandRegistrationStatus = 'failed';
-    commandRegistrationError = error?.message || String(error);
-    console.warn('Guild /announce registration failed:', commandRegistrationError);
+    console.warn('Could not remove old slash commands:', error?.message || error);
   }
 }
 
 client.once(Events.ClientReady, readyClient => {
   console.log(`${BRAND_NAME} Announcement Bot online as ${readyClient.user.tag}`);
-
-  registerGuildCommandAfterReady();
-
-  setInterval(() => {
-    if (commandRegistrationStatus !== 'registered') {
-      registerGuildCommandAfterReady();
-    }
-  }, 5 * 60 * 1000).unref();
+  console.log('Prefix command enabled: .announce <your text>');
+  removeOldSlashCommands();
 });
 
-client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand() || interaction.commandName !== 'announce') return;
+client.on(Events.MessageCreate, async message => {
+  if (!message.inGuild() || message.author.bot) return;
 
-  if (!interaction.inGuild()) {
-    await replyEphemeral(interaction, 'This command can only be used inside a Discord server.');
+  const content = message.content || '';
+  const lower = content.toLowerCase();
+
+  if (lower !== PREFIX && !lower.startsWith(PREFIX + ' ')) return;
+
+  if (!hasAnnouncementPermission(message)) {
+    const denied = await message.reply('You do not have permission to use .announce.').catch(() => null);
+    if (denied) setTimeout(() => denied.delete().catch(() => {}), 5000).unref();
     return;
   }
 
-  if (!hasAnnouncementPermission(interaction)) {
-    await replyEphemeral(
-      interaction,
-      'You do not have permission to use /announce. You need Administrator, Manage Messages, or an allowed announcer role.',
-    );
+  const announcement = content.slice(PREFIX.length).trim();
+
+  if (!announcement) {
+    const help = await message.reply('Use: `.announce Your announcement text`').catch(() => null);
+    if (help) setTimeout(() => help.delete().catch(() => {}), 7000).unref();
     return;
   }
-
-  await interaction.deferReply({ ephemeral: true });
 
   try {
-    const channel = interaction.options.getChannel('channel', true);
-    const message = interaction.options.getString('message', true);
-    const title = interaction.options.getString('title');
-    const imageUrl = interaction.options.getString('image_url');
-    const thumbnailUrl = interaction.options.getString('thumbnail_url');
-    const link1Text = interaction.options.getString('link1_text');
-    const link1Url = interaction.options.getString('link1_url');
-    const link2Text = interaction.options.getString('link2_text');
-    const link2Url = interaction.options.getString('link2_url');
-    const pingRole = interaction.options.getRole('ping_role');
-    const pingEveryone = interaction.options.getBoolean('ping_everyone') ?? false;
-    const footer = interaction.options.getString('footer');
-    const color = parseColor(interaction.options.getString('color'));
+    const me = message.guild.members.me;
+    const permissions = me ? message.channel.permissionsFor(me) : null;
 
-    if (color === null) {
-      await interaction.editReply('Invalid color. Use a 6-digit hex value such as `#111111`.');
+    if (!permissions?.has(PermissionFlagsBits.SendMessages)) {
+      console.warn(`Missing Send Messages permission in channel ${message.channel.id}.`);
       return;
     }
 
-    if (!channel.isTextBased() || typeof channel.send !== 'function') {
-      await interaction.editReply('That channel cannot receive bot messages.');
-      return;
+    // Remove the command message when possible so only the clean announcement remains.
+    if (permissions.has(PermissionFlagsBits.ManageMessages)) {
+      await message.delete().catch(() => {});
     }
 
-    for (const [label, url, number] of [
-      [link1Text, link1Url, 1],
-      [link2Text, link2Url, 2],
-    ]) {
-      if (label && !url) {
-        await interaction.editReply(`Button ${number} has a label but no URL.`);
-        return;
-      }
-      if (url && !isHttpUrl(url)) {
-        await interaction.editReply(`Button ${number} URL must start with http:// or https://.`);
-        return;
-      }
-    }
-
-    if (imageUrl && !isHttpUrl(imageUrl)) {
-      await interaction.editReply('`image_url` must be a valid http:// or https:// URL.');
-      return;
-    }
-
-    if (thumbnailUrl && !isHttpUrl(thumbnailUrl)) {
-      await interaction.editReply('`thumbnail_url` must be a valid http:// or https:// URL.');
-      return;
-    }
-
-    const attachments = ['image1', 'image2', 'image3', 'image4']
-      .map(name => interaction.options.getAttachment(name))
-      .filter(Boolean);
-
-    for (const attachment of attachments) {
-      if (attachment.contentType && !attachment.contentType.startsWith('image/')) {
-        await interaction.editReply(`\`${attachment.name}\` is not an image.`);
-        return;
-      }
-    }
-
-    const me = interaction.guild.members.me;
-    if (!me) {
-      await interaction.editReply('I could not read my server membership. Try again in a moment.');
-      return;
-    }
-
-    const permissions = channel.permissionsFor(me);
-    const required = [
-      [PermissionFlagsBits.ViewChannel, 'View Channel'],
-      [PermissionFlagsBits.EmbedLinks, 'Embed Links'],
-    ];
-
-    if (channel.isThread()) {
-      required.push([PermissionFlagsBits.SendMessagesInThreads, 'Send Messages in Threads']);
-    } else {
-      required.push([PermissionFlagsBits.SendMessages, 'Send Messages']);
-    }
-
-    if (attachments.length) required.push([PermissionFlagsBits.AttachFiles, 'Attach Files']);
-    if (pingEveryone || (pingRole && !pingRole.mentionable)) {
-      required.push([PermissionFlagsBits.MentionEveryone, 'Mention @everyone, @here, and All Roles']);
-    }
-
-    const missing = required
-      .filter(([permission]) => !permissions?.has(permission))
-      .map(([, label]) => label);
-
-    if (missing.length) {
-      await interaction.editReply(`I am missing these permissions in ${channel}: ${missing.join(', ')}.`);
-      return;
-    }
-
-    const files = attachments.map((attachment, index) => ({
-      attachment: attachment.url,
-      name: safeFilename(attachment.name, index + 1),
-    }));
-
-    const mainEmbed = new EmbedBuilder()
-      .setColor(color)
-      .setDescription(message)
-      .setTimestamp()
-      .setFooter({ text: footer || BRAND_NAME });
-
-    if (title) mainEmbed.setTitle(title);
-    if (thumbnailUrl) mainEmbed.setThumbnail(thumbnailUrl);
-
-    if (files[0]) {
-      mainEmbed.setImage(`attachment://${files[0].name}`);
-    } else if (imageUrl) {
-      mainEmbed.setImage(imageUrl);
-    }
-
-    const embeds = [mainEmbed];
-
-    for (let i = 1; i < files.length; i += 1) {
-      embeds.push(new EmbedBuilder().setColor(color).setImage(`attachment://${files[i].name}`));
-    }
-
-    if (files.length && imageUrl) {
-      embeds.push(new EmbedBuilder().setColor(color).setImage(imageUrl));
-    }
-
-    const buttons = [];
-    if (link1Url) {
-      buttons.push(
-        new ButtonBuilder()
-          .setStyle(ButtonStyle.Link)
-          .setLabel(link1Text || 'Open Link')
-          .setURL(link1Url),
-      );
-    }
-    if (link2Url) {
-      buttons.push(
-        new ButtonBuilder()
-          .setStyle(ButtonStyle.Link)
-          .setLabel(link2Text || 'Open Link')
-          .setURL(link2Url),
-      );
-    }
-
-    const pingParts = [];
-    if (pingEveryone) pingParts.push('@everyone');
-    if (pingRole) pingParts.push(`<@&${pingRole.id}>`);
-
-    const sent = await channel.send({
-      content: pingParts.join(' ') || undefined,
-      embeds,
-      files,
-      components: buttons.length ? [new ActionRowBuilder().addComponents(buttons)] : [],
+    await message.channel.send({
+      content: announcement,
       allowedMentions: {
-        parse: pingEveryone ? ['everyone'] : [],
-        roles: pingRole ? [pingRole.id] : [],
+        parse: ['users', 'roles', 'everyone'],
       },
     });
 
-    await interaction.editReply(`Announcement posted in ${channel}. [Open message](${sent.url})`);
+    console.log(`Announcement posted by ${message.author.tag} in channel ${message.channel.id}.`);
   } catch (error) {
     console.error('Announcement error:', error);
-
-    const userMessage = error?.code === 50013
-      ? 'Discord denied a required permission. Check the bot role and target-channel permissions.'
-      : 'The announcement could not be posted. Check the Render logs for the detailed error.';
-
-    await interaction.editReply(userMessage).catch(() => {});
+    await message.channel
+      .send('The announcement could not be posted. Please check the bot permissions.')
+      .catch(() => {});
   }
 });
 
@@ -439,8 +135,7 @@ const server = http.createServer((req, res) => {
     service: 'hashwear-announcement-bot',
     discordReady: client.isReady(),
     bot: client.user?.tag || null,
-    commandRegistrationStatus,
-    commandRegistrationError,
+    command: '.announce',
     configuredGuildId: DISCORD_GUILD_ID || null,
   });
 
@@ -455,23 +150,12 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Health server listening on 0.0.0.0:${PORT}`);
 });
 
-function start() {
-  client.login(DISCORD_BOT_TOKEN)
-    .then(() => console.log('Discord login request accepted.'))
-    .catch(error => console.error('Discord login failed:', error));
-
-  // Do not register slash commands before Gateway login. Render shared IPs can
-  // receive temporary Discord REST 429s during cold start. Registration is
-  // performed after ClientReady against the configured guild for instant visibility.
-
-  setTimeout(() => {
-    if (!client.isReady()) {
-      console.warn(
-        'Discord Gateway is still not ready after 30 seconds. Render may be rate-limited or blocked by Discord.',
-      );
-    }
-  }, 30000).unref();
-}
+client.login(DISCORD_BOT_TOKEN)
+  .then(() => console.log('Discord login request accepted.'))
+  .catch(error => {
+    console.error('Discord login failed:', error);
+    process.exit(1);
+  });
 
 async function shutdown(signal) {
   console.log(`${signal} received; shutting down.`);
@@ -482,5 +166,3 @@ async function shutdown(signal) {
 
 process.once('SIGTERM', () => shutdown('SIGTERM'));
 process.once('SIGINT', () => shutdown('SIGINT'));
-
-start();
