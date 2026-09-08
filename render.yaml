@@ -3,28 +3,23 @@ services:
     name: hashwear-announcement-bot
     runtime: node
     plan: free
+    region: singapore
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /health
     autoDeployTrigger: commit
-
     envVars:
       - key: NODE_VERSION
-        value: "24.17.0"
-
+        value: "24.14.1"
       - key: DISCORD_BOT_TOKEN
         sync: false
-
       - key: DISCORD_CLIENT_ID
         sync: false
-
       - key: DISCORD_GUILD_ID
         sync: false
-
       - key: ANNOUNCER_ROLE_IDS
         sync: false
-
       - key: BRAND_NAME
         value: Hashwear
-
       - key: DEFAULT_EMBED_COLOR
         value: "#111111"
