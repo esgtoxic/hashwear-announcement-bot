@@ -201,8 +201,46 @@ async function replyEphemeral(interaction, content) {
   }
 }
 
+let commandRegistrationStatus = 'pending';
+let commandRegistrationError = null;
+
+async function registerGuildCommandAfterReady() {
+  if (!DISCORD_GUILD_ID.trim()) {
+    console.warn('DISCORD_GUILD_ID is blank; skipping instant guild command registration.');
+    commandRegistrationStatus = 'skipped_no_guild_id';
+    return;
+  }
+
+  const guild = client.guilds.cache.get(DISCORD_GUILD_ID.trim());
+  if (!guild) {
+    commandRegistrationStatus = 'guild_not_found';
+    commandRegistrationError = 'Configured guild is not in the bot cache.';
+    console.warn('Configured DISCORD_GUILD_ID is not available in the bot cache.');
+    return;
+  }
+
+  try {
+    await guild.commands.set([announceCommand.toJSON()]);
+    commandRegistrationStatus = 'registered';
+    commandRegistrationError = null;
+    console.log(`Registered /announce in guild ${guild.id} after ClientReady.`);
+  } catch (error) {
+    commandRegistrationStatus = 'failed';
+    commandRegistrationError = error?.message || String(error);
+    console.warn('Guild /announce registration failed:', commandRegistrationError);
+  }
+}
+
 client.once(Events.ClientReady, readyClient => {
   console.log(`${BRAND_NAME} Announcement Bot online as ${readyClient.user.tag}`);
+
+  registerGuildCommandAfterReady();
+
+  setInterval(() => {
+    if (commandRegistrationStatus !== 'registered') {
+      registerGuildCommandAfterReady();
+    }
+  }, 5 * 60 * 1000).unref();
 });
 
 client.on(Events.InteractionCreate, async interaction => {
@@ -401,6 +439,9 @@ const server = http.createServer((req, res) => {
     service: 'hashwear-announcement-bot',
     discordReady: client.isReady(),
     bot: client.user?.tag || null,
+    commandRegistrationStatus,
+    commandRegistrationError,
+    configuredGuildId: DISCORD_GUILD_ID || null,
   });
 
   res.writeHead(200, {
@@ -419,11 +460,9 @@ function start() {
     .then(() => console.log('Discord login request accepted.'))
     .catch(error => console.error('Discord login failed:', error));
 
-  registerCommands()
-    .catch(error => console.warn(
-      'Slash command registration failed; Discord login will continue:',
-      error?.message || error,
-    ));
+  // Do not register slash commands before Gateway login. Render shared IPs can
+  // receive temporary Discord REST 429s during cold start. Registration is
+  // performed after ClientReady against the configured guild for instant visibility.
 
   setTimeout(() => {
     if (!client.isReady()) {
