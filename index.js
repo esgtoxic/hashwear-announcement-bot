@@ -40,9 +40,6 @@ const client = new Client({
   ws: {
     shardCount: 1,
     shardIds: [0],
-    // Render shared IPs can get stuck on Discord's authenticated /gateway/bot
-    // discovery request. This small bot only needs one shard, so connect to
-    // Discord's documented Gateway URL directly and avoid that REST call.
     fetchGatewayInformation: async () => ({
       url: 'wss://gateway.discord.gg/',
       shards: 1,
@@ -202,6 +199,42 @@ const heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
 heartbeatTimer.unref();
 
 console.log(`Free heartbeat enabled every ${HEARTBEAT_INTERVAL_MS / 60000} minutes.`);
+
+function probeDiscordGateway() {
+  if (typeof WebSocket !== 'function') {
+    console.warn('Discord Gateway probe skipped: WebSocket is unavailable in this Node runtime.');
+    return;
+  }
+
+  const socket = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
+  const timeout = setTimeout(() => {
+    console.warn('Discord Gateway probe timed out before receiving HELLO.');
+    try { socket.close(); } catch {}
+  }, 20000);
+  timeout.unref();
+
+  socket.addEventListener('open', () => {
+    console.log('Discord Gateway probe WebSocket opened.');
+  });
+
+  socket.addEventListener('message', () => {
+    clearTimeout(timeout);
+    console.log('Discord Gateway probe received HELLO successfully.');
+    try { socket.close(1000, 'probe complete'); } catch {}
+  }, { once: true });
+
+  socket.addEventListener('error', event => {
+    clearTimeout(timeout);
+    console.warn('Discord Gateway probe error:', event?.message || 'WebSocket connection error');
+  });
+
+  socket.addEventListener('close', event => {
+    clearTimeout(timeout);
+    console.log(`Discord Gateway probe closed with code ${event.code}.`);
+  });
+}
+
+probeDiscordGateway();
 
 const discordStartupWatchdog = setTimeout(() => {
   if (!client.isReady()) {
