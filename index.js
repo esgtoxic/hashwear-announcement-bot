@@ -13,10 +13,12 @@ const {
   DISCORD_GUILD_ID = '',
   ANNOUNCER_ROLE_IDS = '',
   BRAND_NAME = 'Hashwear',
+  HEARTBEAT_URL = 'https://hashwear-announcement-bot.onrender.com/health',
 } = process.env;
 
 const PORT = Number(process.env.PORT || 10000);
 const PREFIX = '.announce';
+const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
 
 if (!DISCORD_BOT_TOKEN) {
   console.error('Missing required environment variable: DISCORD_BOT_TOKEN.');
@@ -103,7 +105,6 @@ client.on(Events.MessageCreate, async message => {
       return;
     }
 
-    // Remove the command message when possible so only the clean announcement remains.
     if (permissions.has(PermissionFlagsBits.ManageMessages)) {
       await message.delete().catch(() => {});
     }
@@ -136,6 +137,7 @@ const server = http.createServer((req, res) => {
     discordReady: client.isReady(),
     bot: client.user?.tag || null,
     command: '.announce',
+    heartbeat: true,
     configuredGuildId: DISCORD_GUILD_ID || null,
   });
 
@@ -149,6 +151,39 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Health server listening on 0.0.0.0:${PORT}`);
 });
+
+async function sendHeartbeat() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch(HEARTBEAT_URL, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Hashwear-Announcement-Bot-Heartbeat/1.0',
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    console.log(`Heartbeat OK: ${response.status}`);
+  } catch (error) {
+    console.warn('Heartbeat failed:', error?.message || error);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+const firstHeartbeat = setTimeout(sendHeartbeat, 5000);
+firstHeartbeat.unref();
+
+const heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+heartbeatTimer.unref();
+
+console.log(`Free heartbeat enabled every ${HEARTBEAT_INTERVAL_MS / 60000} minutes.`);
 
 let reconnecting = false;
 
