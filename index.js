@@ -37,6 +37,23 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
   ],
+  ws: {
+    shardCount: 1,
+    shardIds: [0],
+    // Render shared IPs can get stuck on Discord's authenticated /gateway/bot
+    // discovery request. This small bot only needs one shard, so connect to
+    // Discord's documented Gateway URL directly and avoid that REST call.
+    fetchGatewayInformation: async () => ({
+      url: 'wss://gateway.discord.gg/',
+      shards: 1,
+      session_start_limit: {
+        total: 1000,
+        remaining: 1,
+        reset_after: 5000,
+        max_concurrency: 1,
+      },
+    }),
+  },
 });
 
 function hasAnnouncementPermission(message) {
@@ -186,9 +203,6 @@ heartbeatTimer.unref();
 
 console.log(`Free heartbeat enabled every ${HEARTBEAT_INTERVAL_MS / 60000} minutes.`);
 
-// Let discord.js manage normal Gateway reconnects itself. The previous loop
-// destroyed the client every 30 seconds and could prevent a slow login from
-// ever completing. Only restart the Render process if initial login stalls.
 const discordStartupWatchdog = setTimeout(() => {
   if (!client.isReady()) {
     console.error('Discord Gateway did not become ready within 90 seconds; restarting process.');
