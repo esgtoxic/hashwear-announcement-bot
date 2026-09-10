@@ -19,6 +19,7 @@ const {
 const PORT = Number(process.env.PORT || 10000);
 const PREFIX = '.announce';
 const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
+const DISCORD_STARTUP_TIMEOUT_MS = 90 * 1000;
 
 if (!DISCORD_BOT_TOKEN) {
   console.error('Missing required environment variable: DISCORD_BOT_TOKEN.');
@@ -185,34 +186,23 @@ heartbeatTimer.unref();
 
 console.log(`Free heartbeat enabled every ${HEARTBEAT_INTERVAL_MS / 60000} minutes.`);
 
-let reconnecting = false;
-
-async function connectDiscord() {
-  if (reconnecting || client.isReady()) return;
-  reconnecting = true;
-
-  try {
-    await client.login(DISCORD_BOT_TOKEN);
-    console.log('Discord login request accepted.');
-  } catch (error) {
-    console.error('Discord login failed:', error);
-  } finally {
-    reconnecting = false;
+// Let discord.js manage normal Gateway reconnects itself. The previous loop
+// destroyed the client every 30 seconds and could prevent a slow login from
+// ever completing. Only restart the Render process if initial login stalls.
+const discordStartupWatchdog = setTimeout(() => {
+  if (!client.isReady()) {
+    console.error('Discord Gateway did not become ready within 90 seconds; restarting process.');
+    process.exit(1);
   }
-}
+}, DISCORD_STARTUP_TIMEOUT_MS);
+discordStartupWatchdog.unref();
 
-connectDiscord();
-
-setInterval(async () => {
-  if (client.isReady()) return;
-
-  console.warn('Discord is not ready; resetting Gateway connection and retrying.');
-  try {
-    client.destroy();
-  } catch {}
-
-  await connectDiscord();
-}, 30000).unref();
+client.login(DISCORD_BOT_TOKEN)
+  .then(() => console.log('Discord login request accepted.'))
+  .catch(error => {
+    console.error('Discord login failed:', error);
+    setTimeout(() => process.exit(1), 5000).unref();
+  });
 
 async function shutdown(signal) {
   console.log(`${signal} received; shutting down.`);
