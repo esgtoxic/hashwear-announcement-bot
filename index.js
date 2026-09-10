@@ -37,21 +37,34 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
   ],
-  ws: {
-    shardCount: 1,
-    shardIds: [0],
-    fetchGatewayInformation: async () => ({
-      url: 'wss://gateway.discord.gg/',
+  shards: [0],
+  shardCount: 1,
+});
+
+// discord.js 14.27 internally calls REST /gateway/bot before opening the
+// WebSocket and does not pass a custom fetchGatewayInformation callback from
+// Client options. Render's shared IP can be rate-limited on that REST lookup,
+// even while the Discord Gateway WebSocket itself is reachable. Intercept only
+// that discovery route and leave every other REST request untouched.
+const originalRestGet = client.rest.get.bind(client.rest);
+client.rest.get = async (route, options) => {
+  const routeString = String(route);
+  if (routeString === '/gateway/bot' || routeString.endsWith('/gateway/bot')) {
+    console.log('Using local Discord Gateway discovery information.');
+    return {
+      url: 'wss://gateway.discord.gg',
       shards: 1,
       session_start_limit: {
         total: 1000,
-        remaining: 1,
-        reset_after: 5000,
+        remaining: 1000,
+        reset_after: 0,
         max_concurrency: 1,
       },
-    }),
-  },
-});
+    };
+  }
+
+  return originalRestGet(route, options);
+};
 
 function hasAnnouncementPermission(message) {
   if (
@@ -142,6 +155,15 @@ client.on(Events.MessageCreate, async message => {
 
 client.on('error', error => console.error('Discord client error:', error));
 client.on('shardError', error => console.error('Discord shard error:', error));
+client.on(Events.Debug, message => {
+  if (
+    message.includes('Preparing to connect') ||
+    message.includes('Fetched Gateway Information') ||
+    message.includes('Session Limit Information')
+  ) {
+    console.log(`Discord debug: ${message}`);
+  }
+});
 process.on('unhandledRejection', error => console.error('Unhandled rejection:', error));
 process.on('uncaughtException', error => console.error('Uncaught exception:', error));
 
@@ -199,42 +221,6 @@ const heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
 heartbeatTimer.unref();
 
 console.log(`Free heartbeat enabled every ${HEARTBEAT_INTERVAL_MS / 60000} minutes.`);
-
-function probeDiscordGateway() {
-  if (typeof WebSocket !== 'function') {
-    console.warn('Discord Gateway probe skipped: WebSocket is unavailable in this Node runtime.');
-    return;
-  }
-
-  const socket = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
-  const timeout = setTimeout(() => {
-    console.warn('Discord Gateway probe timed out before receiving HELLO.');
-    try { socket.close(); } catch {}
-  }, 20000);
-  timeout.unref();
-
-  socket.addEventListener('open', () => {
-    console.log('Discord Gateway probe WebSocket opened.');
-  });
-
-  socket.addEventListener('message', () => {
-    clearTimeout(timeout);
-    console.log('Discord Gateway probe received HELLO successfully.');
-    try { socket.close(1000, 'probe complete'); } catch {}
-  }, { once: true });
-
-  socket.addEventListener('error', event => {
-    clearTimeout(timeout);
-    console.warn('Discord Gateway probe error:', event?.message || 'WebSocket connection error');
-  });
-
-  socket.addEventListener('close', event => {
-    clearTimeout(timeout);
-    console.log(`Discord Gateway probe closed with code ${event.code}.`);
-  });
-}
-
-probeDiscordGateway();
 
 const discordStartupWatchdog = setTimeout(() => {
   if (!client.isReady()) {
